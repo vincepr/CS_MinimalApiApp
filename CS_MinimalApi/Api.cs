@@ -13,7 +13,7 @@ public static class Api
         // mapping the Routes/enpoints to the Api methods
         app.MapGet("/Users", Handle_GetUsers);
         app.MapGet("/Users/{id}", Handle_GetUser);      // id from the Url (because no body for Getrequest)
-        app.MapPost("/Users", Handle_InsertUser);       // user in body - body gets passed down and json parsed automagically? TODO: read about how that
+        app.MapPost("/Users", Handle_InsertUser);       // user in body - body gets passed down and json parsed automagically using Dapper!
         app.MapPut("/Users", Handle_UpdateUser);        // user in body
         app.MapDelete("/Users", Handle_DeletetUser);    // id in json from in body
     }
@@ -84,6 +84,4 @@ public static class Api
             return Results.Problem(ex.Message);
         }
     }
-
-
 }

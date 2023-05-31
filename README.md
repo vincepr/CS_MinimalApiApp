@@ -1,4 +1,5 @@
 # CS_MinimalAPI
+on [github](https://github.com/vincepr/CS_MinimalApiApp)
 
 ## Infos
 Goal is learning some Csharp basics, about APIs, SQL-Integration, Swagger etc. Coding along loosely (at least in the beginning) with the Youtube Project from [IAmTimCorey](https://www.youtube.com/watch?v=dwMFg6uxQ0I)
@@ -155,6 +156,7 @@ public interface IUserData
 View - SQL Server Object Explorer - Sql Server - localdbxyz - Cs_MinimalApiDB - rightClick Properties - ConnectionString. Should give something like: `Data Source=(localdb)\MSSQLLocalDB;Initial Catalog=Cs_MinimalApiDB;Integrated Security=True;Connect Timeout=30;Encrypt=False;Trust Server Certificate=False;Application Intent=ReadWrite;Multi Subnet Failover=False`
 
 - now we add the above ConnectionString to our `appsettings.json`:
+    - note here formating of `Trust Server Certificate=False` had to be changed to `TrustServerCertificate=False` and the same for `Multi Subnet Failover=False` (removed empty spaces) for it to work
 ```cs
 {
   "Logging": {
@@ -165,9 +167,142 @@ View - SQL Server Object Explorer - Sql Server - localdbxyz - Cs_MinimalApiDB - 
   },
   "AllowedHosts": "*",
   "ConnectionStrings": {
-    "Default": "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=Cs_MinimalApiDB;Integrated Security=True;Connect Timeout=30;Encrypt=False;Trust Server Certificate=False;Application Intent=ReadWrite;Multi Subnet Failover=False"
+    "Default": "Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=Cs_MinimalApiDB;Integrated Security=True;Connect Timeout=30;Encrypt=False;TrustServerCertificate=False;ApplicationIntent=ReadWrite;MultiSubnetFailover=False"
   }
 }
-
 ```
 - rightClick `Dependencies` then `Add Project Reference` and add the previous generated class Lib DataAccess
+
+#### Program.cs
+```cs
+// we define some top level imports for our whole api project here (or refactor them to own file 'GlobalUsings.cs')
+global using DataAccess.Data;
+global using DataAccess.Models;
+// normal usings
+using CS_MinimalApi;        // importing our Handlers from next step
+using DataAccess.DbAccess;  // importing Sql Interfaces
+
+//  the WebApp builder:
+var builder = WebApplication.CreateBuilder(args);
+
+// Add services to the container.
+// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// dependency inject our Interfaces into the app.
+// This way we can use for example our UserData down in our RouteHandlers
+builder.Services.AddSingleton<ISqlDataAccess, SqlDataAccess>();
+builder.Services.AddSingleton<IUserData, UserData>();
+
+
+var app = builder.Build();
+
+// Enable Swagger for DevEnv only
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+app.UseHttpsRedirection();
+
+// Route our Handlers, separated to its own static Class
+app.SetupApiRoutes();
+
+app.Run();
+```
+
+####
+```cs
+using System.Runtime.CompilerServices;
+
+namespace CS_MinimalApi;
+/*
+    All Handlers that handle any Routes like /api or /api/login etc come here.
+    - midleware like loggers could be used in here aswell
+    - Dapper? (as i understand at the moment) does most of the heavy lifting here, like
+        - Automagically serialize and deserialize to and from json.
+        - TODO: might wanna read up on that at some later point
+ */
+
+public static class Api
+{
+    public static void SetupApiRoutes(this WebApplication app)
+    {
+        // mapping the Routes/enpoints to the Api methods
+        app.MapGet("/Users", Handle_GetUsers);
+        app.MapGet("/Users/{id}", Handle_GetUser);      // id from the Url (because no body for Getrequest)
+        app.MapPost("/Users", Handle_InsertUser);       // user in body - body gets passed down and json parsed automagically using Dapper!
+        app.MapPut("/Users", Handle_UpdateUser);        // user in body
+        app.MapDelete("/Users", Handle_DeletetUser);    // id in json from in body
+    }
+
+    private static async Task<IResult> Handle_GetUsers(IUserData data)
+    {
+        try
+        {
+            return Results.Ok(await data.GetUsers());
+        }catch (Exception ex)
+        {
+            return Results.Problem(ex.Message); // just throw the error back to client
+        }
+    }
+
+    private static async Task<IResult> Handle_GetUser(int id, IUserData data)
+    // we get the id from the Url
+    // and the data from the singleton we injected into app in Programm.Main
+    {
+        try
+        {
+            var res = await data.GetUser(id);
+            if (res == null) return Results.NotFound();
+            return Results.Ok(res);
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem(ex.Message);
+        }
+    }
+
+    private static async Task<IResult> Handle_InsertUser(UserModel user, IUserData data)
+    // we get the UserModel from the Body of the http-request (the data again from the singleton)
+    {
+        try
+        {
+            await data.InsertUser(user);
+            return Results.Ok();
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem(ex.Message);
+        }
+    }
+
+    private static async Task<IResult> Handle_UpdateUser(UserModel user, IUserData data)
+    {
+        try
+        {
+            await data.UpdateUser(user);
+            return Results.Ok();
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem(ex.Message);
+        }
+    }
+
+    private static async Task<IResult> Handle_DeletetUser(int userId, IUserData data)
+    {
+        try
+        {
+            await data.DeleteUser(userId);
+            return Results.Ok();
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem(ex.Message);
+        }
+    }
+}
+```
